@@ -93,11 +93,23 @@ def comment_on_thread(submission, twitter_url_list, imgur_url_list):
         thread_comment += ("%s\n\n" % imgur_url)
 
     thread_comment += "---\n\n^^I'm ^^a ^^bot ^^made ^^by ^^[u\/jclishman](https://reddit.com/user/jclishman)!"
-    thread_comment += "  ^^My ^^code ^^is ^^available ^^[here](https://github.com/jclihman/SpaceXMirrorBot) ^^:)"
-    
+    thread_comment += " [^^[FAQ/Discussion]](http://reddit.com/user/SpaceXMirrorBot/comments/ad36dr/)  [^^[Code]](https://github.com/jclihman/SpaceXMirrorBot)"
+
     # Posts the comment
-    thread_comment_id = submission.reply(thread_comment)
-    logger.info("Comment made with ID: %s" % thread_comment_id)
+    retries = 0
+    while retries < 5:
+
+        try:
+            thread_comment_id = submission.reply(thread_comment)
+            logger.info("Comment made with ID: %s" % thread_comment_id)
+
+            # Break from the while loop after successful post submission
+            break
+
+        except praw.exceptions.APIException as e:
+            retries += 1
+            logger.error("Hit ratelimit, will try again in 5 minutes. (Attempt %d/5)" % retries)
+            time.sleep(300)
 
 while True:
 
@@ -117,6 +129,7 @@ while True:
 
                     # Ignore if it's not a link post
                     if submission.is_self:
+                        #logger.info("Not a link post")
                         pass
 
                     # Check if it's a link to Twitter
@@ -136,10 +149,11 @@ while True:
 
                     # Ignore if it's a link to anywhere else
                     else:
-                        logger.info("Not a tweet")
+                        pass
+                        #logger.info("Not a tweet")
 
 
-            time.sleep(2)
+            time.sleep(4)
 
     except Exception as e:
         logger.error(str(e))
