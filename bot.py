@@ -30,17 +30,21 @@ imgur_api = ImgurClient(credentials["imgur_client_id"], credentials["imgur_clien
 # Matches the numeric ID from a tweet URL
 status_regex = re.compile('(\d+)(?:\/?)$')
 
-subreddits = [reddit_api.subreddit('jclishmantest'), reddit_api.subreddit('test')]
-last_post_time = time.time()
+subreddits = [reddit_api.subreddit('SpaceX'), reddit_api.subreddit('SpaceXLounge')]
 
+# Individual "last post" times for both subreddits
+last_post_time = {
+    subreddits[0]: time.time(),
+    subreddits[1]: time.time()
+}
 
 def get_twitter_fullres(tweet_url):
 
     # RegEx's the status URL for the numeric status ID
-    tweet_id = status_regex.search(tweet_url)
+    tweet_id = status_regex.search(tweet_url).group(1)
 
     # Get the status JSON from Twitter
-    tweet_data = twitter_api.get_status(tweet_id.group(1), include_entities=True, tweet_mode='extended')
+    tweet_data = twitter_api.get_status(tweet_id, include_entities=True, tweet_mode='extended')
     tweet = tweet_data._json
 
     twitter_url_list = []
@@ -57,11 +61,13 @@ def get_twitter_fullres(tweet_url):
 
             else:
                 logger.info("Media attached is not a picture")
+                return -1
 
         return twitter_url_list
 
     except:
         logger.info("Tweet has no media attached")
+        return -1
 
         
 def upload_to_imgur(url_list):
@@ -93,7 +99,7 @@ def comment_on_thread(submission, twitter_url_list, imgur_url_list):
         thread_comment += ("%s\n\n" % imgur_url)
 
     thread_comment += "---\n\n^^I'm ^^a ^^bot ^^made ^^by ^^[u\/jclishman](https://reddit.com/user/jclishman)!"
-    thread_comment += " [^^[FAQ/Discussion]](http://reddit.com/user/SpaceXMirrorBot/comments/ad36dr/)  [^^[Code]](https://github.com/jclihman/SpaceXMirrorBot)"
+    thread_comment += " [^^[FAQ/Discussion]](http://reddit.com/user/SpaceXMirrorBot/comments/ad36dr/)  [^^[Code]](https://github.com/jclishman/SpaceXMirrorBot)"
 
     # Posts the comment
     retries = 0
@@ -123,9 +129,9 @@ while True:
                 post_time = submission.created_utc
 
                 # Is it new?
-                if post_time > last_post_time:
+                if post_time > last_post_time[subreddit]:
 
-                    last_post_time = post_time
+                    last_post_time[subreddit] = post_time
 
                     # Ignore if it's not a link post
                     if submission.is_self:
@@ -134,23 +140,28 @@ while True:
 
                     # Check if it's a link to Twitter
                     elif "twitter.com" in submission.url:
+                        logger.info("="*30)
                         logger.info("Found a tweet post (%s)" % submission.shortlink,)
                         #logger.info(submission.url)
 
                         twitter_url_list = get_twitter_fullres(submission.url)
-                        imgur_url_list = upload_to_imgur(twitter_url_list)
 
-                        logger.info("Max Res Twitter URLs: ")
-                        logger.info(twitter_url_list)
-                        logger.info("Mirror Imgur URLs: ")
-                        logger.info(imgur_url_list)
+                        # get_twitter_fullres() returns -1 if the tweet has no/incorrect media type
+                        if twitter_url_list != -1:
 
-                        comment_on_thread(submission, twitter_url_list, imgur_url_list)
+                            imgur_url_list = upload_to_imgur(twitter_url_list)
+
+                            logger.info("Max Res Twitter URLs: ")
+                            logger.info(twitter_url_list)
+                            logger.info("Mirror Imgur URLs: ")
+                            logger.info(imgur_url_list)
+
+                            comment_on_thread(submission, twitter_url_list, imgur_url_list)
 
                     # Ignore if it's a link to anywhere else
                     else:
-                        pass
                         #logger.info("Not a tweet")
+                        pass
 
 
             time.sleep(4)
