@@ -19,16 +19,14 @@ reddit_api = praw.Reddit(
 )
 
 # Tweepy API Authentication
-auth = tweepy.OAuthHandler(credentials["consumer_key"], credentials["consumer_secret"])
-auth.set_access_token(credentials["access_token"], credentials["access_secret"])
-twitter_api = tweepy.API(auth)
+twitter_api = tweepy.Client(bearer_token=credentials["bearer_token"])
 
 # Imgur API Authentication
 imgur_api = ImgurClient(credentials["imgur_client_id"], credentials["imgur_client_secret"])
 
 # Twitter Status ID Regex
 # Matches the numeric ID from a tweet URL
-status_regex = re.compile('(\d+)(?:\/?)$')
+status_regex = re.compile('(\d+)(?:\/?)')
 
 subreddits = [reddit_api.subreddit('SpaceX'), reddit_api.subreddit('SpaceXLounge')]
 
@@ -44,20 +42,19 @@ def get_twitter_fullres(tweet_url):
     tweet_id = status_regex.search(tweet_url).group(1)
 
     # Get the status JSON from Twitter
-    tweet_data = twitter_api.get_status(tweet_id, include_entities=True, tweet_mode='extended')
-    tweet = tweet_data._json
+    tweet_data = twitter_api.get_tweet(tweet_id, expansions="attachments.media_keys", media_fields="type,url,preview_image_url")
 
     twitter_url_list = []
 
     try:
 
         # Check if the tweet has media attached
-        for tweet_media in tweet["extended_entities"]["media"]:
+        for tweet_media in tweet_data.includes["media"]:
 
-            if tweet_media["type"] == "photo":
+            if tweet_media.type == "photo":
 
                 # Appends ":orig" to URL for max resolution
-                twitter_url_list.append(tweet_media["media_url_https"]+":orig")
+                twitter_url_list.append(tweet_media.url+":orig")
 
             else:
                 logger.info("Media attached is not a picture")
@@ -106,7 +103,7 @@ def comment_on_thread(submission, twitter_url_list, imgur_url_list):
     while retries < 5:
 
         try:
-            thread_comment_id = submission.reply(thread_comment)
+            thread_comment_id = submission.reply(body=thread_comment)
             logger.info("Comment made with ID: %s" % thread_comment_id)
 
             # Break from the while loop after successful post submission
