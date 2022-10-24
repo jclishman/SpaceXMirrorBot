@@ -1,5 +1,5 @@
-from imgurpython import ImgurClient
 from bot_logging import logger
+import requests
 import tweepy
 import json
 import praw
@@ -24,11 +24,13 @@ auth.set_access_token(credentials["access_token"], credentials["access_secret"])
 twitter_api = tweepy.API(auth)
 
 # Imgur API Authentication
-imgur_api = ImgurClient(credentials["imgur_client_id"], credentials["imgur_client_secret"])
+imgur_auth_data = {'Authorization': f"Client-ID {credentials['imgur_client_id']}"}
+imgur_upload_url = "https://api.imgur.com/3/image"
+
 
 # Twitter Status ID Regex
 # Matches the numeric ID from a tweet URL
-status_regex = re.compile('(\d+)(?:\/?)$')
+status_regex = re.compile('status\/(\d+)')
 
 subreddits = [reddit_api.subreddit('SpaceX'), reddit_api.subreddit('SpaceXLounge')]
 
@@ -72,14 +74,17 @@ def get_twitter_fullres(tweet_url):
         
 def upload_to_imgur(url_list):
 
+
     imgur_url_list = []
 
     for url in url_list:
 
+
         # Uploads image to Imgur and adds the link to a list
-        image = imgur_api.upload_from_url(url, anon=True)
-        logger.info("Uploaded to Imgur with ID: %s" % image["id"])
-        imgur_url_list.append(image["link"])
+        upload = requests.post(imgur_upload_url, headers=imgur_auth_data, data=url)
+        upload_link = upload.json()["data"]["link"]
+        
+        imgur_url_list.append(upload_link)
         time.sleep(1)
 
     return imgur_url_list
@@ -91,15 +96,16 @@ def comment_on_thread(submission, twitter_url_list, imgur_url_list):
     thread_comment = "**Max Resolution Twitter Link(s)**\n\n"
 
     for twitter_url in twitter_url_list:
-        thread_comment += ("%s\n\n" % twitter_url)
+        thread_comment += (f"{twitter_url}\n\n")
 
     thread_comment += "**Imgur Mirror Link(s)**\n\n"
 
     for imgur_url in imgur_url_list:
-        thread_comment += ("%s\n\n" % imgur_url)
+        thread_comment += (f"{imgur_url}\n\n")
 
-    thread_comment += "---\n\n^^I'm ^^a ^^bot ^^made ^^by ^^[u\/jclishman](https://reddit.com/user/jclishman)!"
-    thread_comment += " [^^[FAQ/Discussion]](http://reddit.com/user/SpaceXMirrorBot/comments/ad36dr/)  [^^[Code]](https://github.com/jclishman/SpaceXMirrorBot)"
+    thread_comment += "---\n\n^The ^bot ^is ^back! ^Apologies ^for ^the ^downtime."
+    thread_comment += "\n\n^^I'm ^^a ^^bot ^^made ^^by ^^[u\/jclishman](https://reddit.com/user/jclishman)!"
+    thread_comment += " [^^[Code]](https://github.com/jclishman/SpaceXMirrorBot)"
 
     # Posts the comment
     retries = 0
@@ -107,14 +113,14 @@ def comment_on_thread(submission, twitter_url_list, imgur_url_list):
 
         try:
             thread_comment_id = submission.reply(thread_comment)
-            logger.info("Comment made with ID: %s" % thread_comment_id)
+            logger.info(f"Comment made with ID: {thread_comment_id}")
 
             # Break from the while loop after successful post submission
             break
 
         except praw.exceptions.APIException as e:
             retries += 1
-            logger.error("Hit ratelimit, will try again in 5 minutes. (Attempt %d/5)" % retries)
+            logger.error(f"Hit ratelimit, will try again in 5 minutes. (Attempt {retries}/5)")
             time.sleep(300)
 
 while True:
@@ -122,6 +128,7 @@ while True:
     try:
 
         for subreddit in subreddits:
+            logger.info("Checked subreddit")
 
             # Find the most recent submission
             for submission in subreddit.new(limit=1):
@@ -140,8 +147,9 @@ while True:
 
                     # Check if it's a link to Twitter
                     elif "twitter.com" in submission.url:
+
                         logger.info("="*30)
-                        logger.info("Found a tweet post (%s)" % submission.shortlink,)
+                        logger.info(f"Found a tweet post ({submission.shortlink})")
                         #logger.info(submission.url)
 
                         twitter_url_list = get_twitter_fullres(submission.url)
@@ -149,6 +157,7 @@ while True:
                         # get_twitter_fullres() returns -1 if the tweet has no/incorrect media type
                         if twitter_url_list != -1:
 
+                            logger.info("Uploading to imgur")
                             imgur_url_list = upload_to_imgur(twitter_url_list)
 
                             logger.info("Max Res Twitter URLs: ")
@@ -162,7 +171,6 @@ while True:
                     else:
                         #logger.info("Not a tweet")
                         pass
-
 
             time.sleep(4)
 
